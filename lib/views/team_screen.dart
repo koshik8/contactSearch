@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import '../viewmodels/contact_viewmodel.dart';
 import 'add_contact_page.dart';
 import '../models/contact_model.dart';
@@ -8,13 +9,58 @@ class TeamScreen extends StatefulWidget {
   const TeamScreen({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _TeamScreenState createState() => _TeamScreenState();
 }
 
 class _TeamScreenState extends State<TeamScreen> {
   bool _isSearching = false;
   String _searchText = '';
+
+  Future<void> _pickContactFromPhone() async {
+    if (await FlutterContacts.requestPermission()) {
+      final contact = await FlutterContacts.openExternalPick();
+      if (contact != null) {
+        final phoneNumbersMap = <String, String>{};
+      final lg = contact.phones.length;
+      
+      if(lg==1){
+        final contactModel = ContactModel(
+          firstName: contact.name.first,
+          lastName: contact.name.last ,
+          phoneNumbers: phoneNumbersMap,
+          email: contact.emails.isNotEmpty ? contact.emails.first.address : '',
+          isVerified: false,
+        );
+        Provider.of<ContactViewModel>(context, listen: false).addContact(contactModel);
+      }
+
+      else{
+for (var phone in contact.phones) {
+        // Use phone label if available, else default to 'Mobile'
+        var label = phone.label.toString().substring(11);
+        
+        
+        // Add the phone number with the format "name + label"
+        phoneNumbersMap['$label'] = phone.number;
+
+
+        final contactModel = ContactModel(
+          firstName: contact.name.first,
+          lastName: contact.name.last +' '+ label,
+          phoneNumbers: phoneNumbersMap,
+          email: contact.emails.isNotEmpty ? contact.emails.first.address : '',
+          isVerified: false,
+        );
+        Provider.of<ContactViewModel>(context, listen: false).addContact(contactModel);
+      }
+      }
+      // Iterate through each phone number
+      
+
+        
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,19 +70,14 @@ class _TeamScreenState extends State<TeamScreen> {
         title: _isSearching
             ? TextField(
                 autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'Search Contacts',
-                  border: InputBorder.none,
-                ),
+                decoration: const InputDecoration(hintText: 'Search Contacts',border: InputBorder.none,),
                 onChanged: (query) {
-                  setState(() {
-                    _searchText = query;
-                  });
+                  setState(() => _searchText = query);
                   Provider.of<ContactViewModel>(context, listen: false).searchContact(query);
                 },
               )
             : const Text("Team"),
-        backgroundColor: const Color.fromARGB(255, 32, 101, 205),
+            backgroundColor: const Color.fromARGB(255, 32, 101, 205),
         leading: IconButton(
           icon: const Icon(Icons.menu),
           onPressed: () {
@@ -46,38 +87,20 @@ class _TeamScreenState extends State<TeamScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-              });
-            },
+            onPressed: () => setState(() => _isSearching = !_isSearching),
           ),
         ],
       ),
       body: Consumer<ContactViewModel>(
         builder: (context, viewModel, child) {
-          viewModel.searchContact(_searchText); // Ensures contacts are filtered
+          viewModel.searchContact(_searchText);
           return ListView.builder(
             itemCount: viewModel.filteredContacts.length,
             itemBuilder: (context, index) {
               final contact = viewModel.filteredContacts[index];
               return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.grey[300],
-                  child: Text(contact.firstName.isNotEmpty ? contact.firstName[0] : 'N'),
-                ),
                 title: Text('${contact.firstName} ${contact.lastName}'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (contact.isVerified)
-                      const Icon(Icons.verified_user, color: Color.fromARGB(255, 32, 101, 205)),
-                    const Icon(Icons.call, color: Color.fromARGB(255, 32, 101, 205)),
-                  ],
-                ),
-                onTap: () {
-                  _showVerifyContactDialog(context, viewModel, index);
-                },
+                onTap: () => _showVerifyContactDialog(context, viewModel, index),
               );
             },
           );
@@ -85,16 +108,39 @@ class _TeamScreenState extends State<TeamScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AddContactPage()),
+          await showDialog<ContactModel>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Add Contact'),
+              content: const Text('Would you like to create or pick a contact?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await _pickContactFromPhone();
+                  },
+                  child: const Text('Pick from Contacts'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AddContactPage()),
+                    );
+                    if (result is ContactModel) {
+                      Provider.of<ContactViewModel>(context, listen: false).addContact(result);
+                    }
+                  },
+                  child: const Text('Create Manually'),
+                ),
+              ],
+            ),
           );
-
-          if (result is ContactModel) {
-            // If the result is a ContactModel, add it to the view model
-            // ignore: use_build_context_synchronously
-            Provider.of<ContactViewModel>(context, listen: false).addContact(result);
-          }
         },
         child: const Icon(Icons.add),
       ),
@@ -105,7 +151,6 @@ class _TeamScreenState extends State<TeamScreen> {
     final contact = viewModel.filteredContacts[index];
 
     if (contact.isVerified) {
-      // Show alert that the contact is already verified
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -120,12 +165,11 @@ class _TeamScreenState extends State<TeamScreen> {
         ),
       );
     } else {
-      // Show confirmation dialog for verification
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Verify Contact'),
-          content: const Text('Do you want to verify this contact?'),
+          content: const Text('Are you sure you want to verify this contact?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -133,8 +177,8 @@ class _TeamScreenState extends State<TeamScreen> {
             ),
             TextButton(
               onPressed: () {
-                viewModel.verifyContact(index);
                 Navigator.pop(context);
+                viewModel.verifyContact(index);
               },
               child: const Text('Verify'),
             ),

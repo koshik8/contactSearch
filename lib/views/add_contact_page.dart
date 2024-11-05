@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import '../viewmodels/contact_viewmodel.dart';
 import '../models/contact_model.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class AddContactPage extends StatefulWidget {
   const AddContactPage({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _AddContactPageState createState() => _AddContactPageState();
 }
 
@@ -17,8 +16,8 @@ class _AddContactPageState extends State<AddContactPage> {
   String lastName = '';
   String phno = '';
   String email = '';
-  bool? saveToPhoneContacts = true; // Renamed for clarity
-  final List<Map<String, String>> customFields = []; // Store additional fields
+  bool? saveToPhoneContacts = true;
+  final List<Map<String, String>> customFields = [];
 
   @override
   void initState() {
@@ -27,9 +26,10 @@ class _AddContactPageState extends State<AddContactPage> {
   }
 
   Future<void> requestContactPermission() async {
-    PermissionStatus status = await Permission.contacts.status;
-    if (!status.isGranted) {
-      await Permission.contacts.request();
+    if (!await FlutterContacts.requestPermission()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contacts permission denied.')),
+      );
     }
   }
 
@@ -58,7 +58,7 @@ class _AddContactPageState extends State<AddContactPage> {
           actions: [
             Center(
               child: TextButton(
-                style: TextButton.styleFrom(backgroundColor: const Color.fromARGB(255, 11, 43, 90),textStyle: const TextStyle(fontWeight: FontWeight.bold,color:Colors.white) ),
+                 style: TextButton.styleFrom(backgroundColor: const Color.fromARGB(255, 11, 43, 90),textStyle: const TextStyle(fontWeight: FontWeight.bold,color:Colors.white) ),
                 onPressed: () {
                   if (fieldName.isNotEmpty && fieldValue.isNotEmpty) {
                     setState(() {
@@ -66,7 +66,6 @@ class _AddContactPageState extends State<AddContactPage> {
                     });
                     Navigator.pop(context);
                   } else {
-                    // Show an error message if fields are empty
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Both fields are required.')),
                     );
@@ -84,9 +83,7 @@ class _AddContactPageState extends State<AddContactPage> {
                   borderRadius: BorderRadius.circular(8.0), // Rounded corners
                   borderSide: const BorderSide(color: Colors.grey), // Border color
                 ),),
-                onChanged: (value) {
-                  fieldName = value;
-                },
+                onChanged: (value) => fieldName = value,
               ),
               const SizedBox(height: 10),
               TextField(
@@ -94,9 +91,7 @@ class _AddContactPageState extends State<AddContactPage> {
                   borderRadius: BorderRadius.circular(8.0), // Rounded corners
                   borderSide: const BorderSide(color: Colors.grey), // Border color
                 ),),
-                onChanged: (value) {
-                  fieldValue = value;
-                },
+                onChanged: (value) => fieldValue = value,
               ),
             ],
           ),
@@ -111,52 +106,59 @@ class _AddContactPageState extends State<AddContactPage> {
         Provider.of<ContactViewModel>(context, listen: false);
 
     return Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          centerTitle: true,
-          title: const Text(
-            'Add New Contact',
-            style: TextStyle(color: Colors.white, fontSize: 18),
-          ),
-          backgroundColor: const Color(0xFF5676F5),
-          leading: IconButton(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        centerTitle: true,
+        title: const Text('Add New Contact',style: TextStyle(color: Colors.white, fontSize: 18),),
+         backgroundColor: const Color(0xFF5676F5),
+        leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios),
             onPressed: () {
               Navigator.pop(context);
             },
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.check, color: Colors.white),
-              onPressed: () {
-                if (firstName.isNotEmpty || lastName.isNotEmpty) {
-                  contactViewModel.addContact(ContactModel(
-                    firstName: firstName.isEmpty ? 'Unnamed' : firstName,
-                    lastName: lastName.isEmpty ? '' : lastName,
-                    phoneNumbers: {'Mobile': phno},
-                    email: email,
-                    isVerified:
-                        false, // Set newly created contact to not verified
-                    // Adding custom fields to the contact if needed
-                  ));
-                  Navigator.pop(context);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content:
-                            Text('At least a first or last name is required.')),
-                  );
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            onPressed: () async {
+              if (firstName.isNotEmpty || lastName.isNotEmpty) {
+                final newContact = ContactModel(
+                  firstName: firstName.isEmpty ? 'Unnamed' : firstName,
+                  lastName: lastName,
+                  phoneNumbers: {'Mobile': phno},
+                  email: email,
+                  isVerified: false,
+                );
+
+                if (saveToPhoneContacts == true) {
+                  final flutterContact = Contact()
+                    ..name.first = newContact.firstName
+                    ..name.last = newContact.lastName
+                    ..phones = [Phone(phno)]
+                    ..emails = [Email(email)];
+
+                  await FlutterContacts.insertContact(flutterContact);
                 }
-              },
-            ),
-          ],
-        ),
-        body: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 30.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              CircleAvatar(
+
+                contactViewModel.addContact(newContact);
+                Navigator.pop(context);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content:
+                          Text('At least a first or last name is required.')),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 30.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            CircleAvatar(
                 radius: 50,
                 backgroundColor: Colors.grey[200],
                 child: const Icon(
@@ -166,25 +168,21 @@ class _AddContactPageState extends State<AddContactPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              TextField(
-                decoration: InputDecoration(
-                  labelText: 'First Name',
+
+            // Basic fields
+            TextField(
+              decoration: InputDecoration(labelText: 'First Name',
                   labelStyle: TextStyle(color: Colors.grey[600]),
                   fillColor: Colors.white,
                   filled: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10.0),
-                  ),
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    firstName = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                decoration: InputDecoration(
+                  ),),
+              onChanged: (value) => setState(() => firstName = value),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              decoration: InputDecoration(
                   labelText: 'Last Name',
                   labelStyle: TextStyle(color: Colors.grey[600]),
                   fillColor: Colors.white,
@@ -193,13 +191,9 @@ class _AddContactPageState extends State<AddContactPage> {
                     borderRadius: BorderRadius.circular(10.0),
                   ),
                 ),
-                onChanged: (value) {
-                  setState(() {
-                    lastName = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 15),
+              onChanged: (value) => setState(() => lastName = value),
+            ),
+            const SizedBox(height: 15),
               TextField(
                 decoration: InputDecoration(
                   labelText: 'Phone Number',
@@ -210,14 +204,10 @@ class _AddContactPageState extends State<AddContactPage> {
                     borderRadius: BorderRadius.circular(10.0),
                   ),
                 ),
-                onChanged: (value) {
-                  setState(() {
-                    phno = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 15),
-              TextField(
+              onChanged: (value) => setState(() => phno = value),
+            ),
+            const SizedBox(height: 15),
+           TextField(
                 decoration: InputDecoration(
                   labelText: 'Email',
                   labelStyle: TextStyle(color: Colors.grey[600]),
@@ -227,20 +217,17 @@ class _AddContactPageState extends State<AddContactPage> {
                     borderRadius: BorderRadius.circular(10.0),
                   ),
                 ),
-                onChanged: (value) {
-                  setState(() {
-                    email = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 15),
 
-              // Dynamic fields added here
-              ...customFields.map((field) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 15.0),
-                  child: TextField(
-                    decoration: InputDecoration(
+              onChanged: (value) => setState(() => email = value),
+            ),
+            const SizedBox(height: 15),
+
+            // Custom fields
+            ...customFields.map((field) {
+              return Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: TextField(
+                  decoration: InputDecoration(
                       labelText: '${field['name']}',
                       labelStyle: TextStyle(color: Colors.grey[600]),
                       fillColor: Colors.white,
@@ -249,16 +236,17 @@ class _AddContactPageState extends State<AddContactPage> {
                         borderRadius: BorderRadius.circular(10.0),
                       ),
                     ),
-                    onChanged: (value) {
-                      // You can handle the value of the custom fields here if needed
-                    },
-                  ),
-                );
-              // ignore: unnecessary_to_list_in_spreads
-              }).toList(),
+                  onChanged: (value) {
+                    field['value'] = value;
+                  },
+                ),
+              );
+            }).toList(),
 
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
+            const SizedBox(height: 15),
+
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.grey[300],
                   minimumSize: const Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(
@@ -266,10 +254,8 @@ class _AddContactPageState extends State<AddContactPage> {
                   ),
                   side: const BorderSide(color: Colors.grey),
                 ),
-                onPressed: () {
-                  _addCustomField(); // Call the method to show dialog
-                },
-                child: const Row(
+              onPressed: _addCustomField,
+              child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.add, color: Colors.black),
@@ -279,21 +265,19 @@ class _AddContactPageState extends State<AddContactPage> {
                 ),
               ),
               const Spacer(),
-              Row(
-                children: [
-                  Checkbox(
-                    activeColor: const Color(0xFF5676F5),
-                    value: saveToPhoneContacts,
-                    onChanged: (bool? value) {
-                      setState(() {
-                        saveToPhoneContacts = value;
-                      });
-                    },
-                  ),
-                  const Text('Save this into Phone contacts'),
-                ],
-              ),
-              ElevatedButton(
+            
+            Row(
+              children: [
+                Checkbox(
+                  activeColor: const Color(0xFF5676F5),
+                  value: saveToPhoneContacts,
+                  onChanged: (value) =>
+                      setState(() => saveToPhoneContacts = value),
+                ),
+                const Text('Save to Phone Contacts'),
+              ],
+            ),
+          ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF5676F5),
                   minimumSize: const Size(double.infinity, 50),
@@ -301,7 +285,7 @@ class _AddContactPageState extends State<AddContactPage> {
                     borderRadius: BorderRadius.circular(10.0),
                   ),
                 ),
-                onPressed: () {
+                onPressed: () async {
                   if (firstName.isNotEmpty || lastName.isNotEmpty) {
                     final newContact = ContactModel(
                       firstName: firstName.isEmpty ? 'Unnamed' : firstName,
@@ -310,6 +294,17 @@ class _AddContactPageState extends State<AddContactPage> {
                       email: email,
                       isVerified: false, // Ensure the contact is not verified
                     );
+                    if (saveToPhoneContacts == true) {
+                  final flutterContact = Contact()
+                    ..name.first = newContact.firstName
+                    ..name.last = newContact.lastName
+                    ..phones = [Phone(phno)]
+                    ..emails = [Email(email)];
+
+                  await FlutterContacts.insertContact(flutterContact);
+                }
+
+                contactViewModel.addContact(newContact);
                     Navigator.pop(context, newContact); // Pass back the contact
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -327,3 +322,4 @@ class _AddContactPageState extends State<AddContactPage> {
         ));
   }
 }
+  
